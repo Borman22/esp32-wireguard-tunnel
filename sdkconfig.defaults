@@ -1,0 +1,53 @@
+# Logs
+CONFIG_LOG_DEFAULT_LEVEL_INFO=y
+
+# HTTP server (длинный заголовок Authorization и запросы настроек)
+CONFIG_HTTPD_MAX_REQ_HDR_LEN=1024
+
+# Сокеты lwIP: httpd (4 + 3 служебных) + прокси (3 слушающих + 3 пары) = 16.
+# Расчёт и static_assert — в web_server.c / proxy.h. Больше 16 lwIP не допускает.
+CONFIG_LWIP_MAX_SOCKETS=16
+
+# Активных TCP-соединений: прокси держит по два на соединение (клиент и цель) плюс httpd
+# и закрывающиеся (FIN_WAIT/TIME_WAIT); умолчание 16 при шести-восьми одновременных не хватало бы.
+CONFIG_LWIP_MAX_ACTIVE_TCP=32
+
+# Короткий TIME_WAIT/FIN_WAIT: при потоке коротких соединений (браузер открывает по шесть, роутер TP-Link
+# закрывает после каждого ответа) PCB в TIME_WAIT копились на две минуты, lwIP постоянно "убивал" старые
+# (tcp_kill_timewait), и на этом пути была порча кучи (tcp_slowtmr -> tcp_free). Сети здесь локальные/VPN.
+CONFIG_LWIP_TCP_MSL=3000
+CONFIG_LWIP_TCP_FIN_WAIT_TIMEOUT=5000
+
+# Окна TCP 8 сегментов (было 4): прокси держит соединения по двум ногам, поток упирался в окно.
+CONFIG_LWIP_TCP_WND_DEFAULT=11520
+CONFIG_LWIP_TCP_SND_BUF_DEFAULT=11520
+CONFIG_LWIP_TCP_RECVMBOX_SIZE=12
+
+# ОТКАТ: MSS=1000 включали для слабого WiFi, но в этой сборке упала куча (двойное освобождение в lwIP);
+# причина не установлена, поэтому вернули умолчание. Прежний комментарий:
+# Короткие TCP-сегменты: на слабом WiFi длинные кадры теряются заметно чаще коротких (измерено
+# ping -s 1300: потери 60% против 7% при -s 56). Обе ноги прокси (туннель и WiFi) завершаются на плате,
+# поэтому её MSS ограничивает размер кадров с обеих сторон. Умолчание 1440; вернуть, если канал хороший.
+CONFIG_LWIP_TCP_MSS=1440
+
+# SNTP: два сервера времени (pool.ntp.org и time.google.com), см. wg_tunnel.c
+CONFIG_LWIP_SNTP_MAX_SERVERS=2
+
+# Flash 4 МБ (ESP32-C3). Для ESP32-S3 значения переопределяет sdkconfig.defaults.esp32s3
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+CONFIG_ESPTOOLPY_FLASHSIZE="4MB"
+
+# Partition table (два OTA-слота)
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+
+# lwIP: хранить указатель esp_netif в netif->client_data, а не в netif->state.
+# Без этого коллбэк esp_netif трактует netif->state как esp_netif_t и падает (Load access fault)
+# при создании интерфейса WireGuard, у которого в state лежит своя структура.
+# LWIP_ESP_NETIF_DATA включается при CONFIG_ESP_NETIF_BRIDGE_EN (см. lwip/port/include/lwipopts.h).
+CONFIG_ESP_NETIF_BRIDGE_EN=y
+CONFIG_LWIP_NUM_NETIF_CLIENT_DATA=1
+
+# ОТЛАДКА порчи кучи (tlsf_free assert в tcp_free): при порче в логе будет адрес блока и кто его выделил.
+# Убрать после выяснения причины: заметно тратит ОЗУ и время.
+# CONFIG_HEAP_POISONING_COMPREHENSIVE=y  # включать для поиска порчи кучи (заметно замедляет)

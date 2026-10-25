@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later; Copyright (c) 2026 Borman22 -->
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WG Tunnel</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: monospace; background: #0d1117; color: #c9d1d9; padding: 16px; max-width: 640px; }
+
+/* Вкладки */
+.tabs { display: flex; gap: 4px; margin-bottom: 16px; }
+.tab  { padding: 8px 20px; border-radius: 6px; cursor: pointer; background: #161b22;
+        border: 1px solid #30363d; color: #8b949e; font-family: monospace; font-size: 0.95em; }
+.tab.active { background: #1f6feb22; border-color: #1f6feb; color: #58a6ff; }
+.page { display: none; }
+.page.active { display: block; }
+
+/* Карточки */
+.card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 14px; margin-bottom: 10px; }
+.card h3 { color: #58a6ff; font-size: 0.85em; font-weight: normal; margin-bottom: 10px; }
+.kv { display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; font-size: 0.9em; }
+.kv span:first-child { color: #8b949e; }
+.kv span:last-child  { text-align: right; word-break: break-all; }
+
+/* Индикатор состояния туннеля */
+.badge { display: inline-block; padding: 2px 10px; border-radius: 10px; font-size: 0.85em; }
+.badge.up   { background: #23863622; color: #3fb950; border: 1px solid #238636; }
+.badge.wait { background: #9e6a0322; color: #d29922; border: 1px solid #9e6a03; }
+.badge.off  { background: #6e768122; color: #8b949e; border: 1px solid #484f58; }
+
+/* Форма */
+.field  { margin-bottom: 12px; }
+.field label { display: block; color: #8b949e; font-size: 0.85em; margin-bottom: 4px; }
+.field input[type=text], .field input[type=password], .field input[type=number], .field input[type=file], .field select {
+  width: 100%; background: #0d1117; border: 1px solid #30363d; border-radius: 6px;
+  color: #c9d1d9; font-family: monospace; font-size: 0.95em; padding: 6px 10px;
+}
+.field input:focus, .field select:focus { outline: none; border-color: #1f6feb; }
+.checkbox-row { display: flex; align-items: center; gap: 8px; color: #8b949e; font-size: 0.85em; margin-bottom: 8px; }
+.row3 { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+.row3 input { min-width: 0; background: #0d1117; border: 1px solid #30363d; border-radius: 6px;
+              color: #c9d1d9; font-family: monospace; font-size: 0.95em; padding: 6px 8px; }
+.row3 .p { width: 80px; } .row3 .ip { flex: 1; }
+.hint { color: #484f58; font-size: 0.78em; margin-top: 3px; line-height: 1.4; }
+.btn  { background: #1f6feb; border: none; border-radius: 6px; color: #fff;
+        font-family: monospace; font-size: 0.95em; padding: 8px 20px; cursor: pointer; }
+.btn:hover { background: #388bfd; }
+.btn:disabled { opacity: 0.35; cursor: default; pointer-events: none; }
+.btn.danger { background: #da3633; } .btn.danger:hover { background: #f85149; }
+.btn.sm { padding: 5px 12px; font-size: 0.85em; white-space: nowrap; }
+.btn.gray { background: #30363d; } .btn.gray:hover { background: #484f58; }
+#save-msg { margin-left: 12px; font-size: 0.85em; }
+.ok { color: #3fb950; } .err { color: #f85149; } .warn { color: #d29922; }
+
+/* Логи и прогресс */
+#log-box { background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 8px;
+           height: 60vh; overflow-y: auto; font-size: 0.78em; white-space: pre-wrap; word-break: break-all; }
+progress { width: 100%; height: 10px; margin-top: 8px; }
+</style>
+</head>
+<body>
+
+<div class="tabs">
+  <button class="tab active" onclick="showTab('status')">Статус</button>
+  <button class="tab"        onclick="showTab('settings')">Настройки</button>
+  <button class="tab"        onclick="showTab('logs')">Логи</button>
+</div>
+
+<!-- ═══════════════════════════ ВКЛАДКА: СТАТУС ═══════════════════════════ -->
+<div id="page-status" class="page active">
+  <div class="card">
+    <h3>Туннель WireGuard</h3>
+    <div class="kv"><span>Состояние</span><span><span id="st-badge" class="badge off">--</span></span></div>
+    <div class="kv"><span>Последнее рукопожатие</span><span id="st-hs">--</span></div>
+    <div class="kv"><span>Адрес в туннеле</span><span id="st-addr">--</span></div>
+    <div class="kv"><span>Сервер</span><span id="st-endpoint">--</span></div>
+    <div id="st-trial" class="hint warn" style="display:none">
+      Проверяется новая конфигурация. Если рукопожатия не будет, устройство само вернётся к прежней.
+    </div>
+  </div>
+  <div class="card">
+    <h3>WiFi</h3>
+    <div class="kv"><span>Режим</span><span id="st-wifi-mode">--</span></div>
+    <div class="kv"><span>Сеть</span><span id="st-ssid">--</span></div>
+    <div class="kv"><span>IP</span><span id="st-ip">--</span></div>
+    <div class="kv"><span>Сигнал</span><span id="st-rssi">--</span></div>
+  </div>
+  <div class="card">
+    <h3>Проброс портов</h3>
+    <div class="kv"><span>Сейчас соединений</span><span id="st-px-active">--</span></div>
+    <div class="kv"><span>Всего принято</span><span id="st-px-total">--</span></div>
+    <div class="kv"><span>Отброшено</span><span id="st-px-rej">--</span></div>
+    <div class="kv"><span>Цель недоступна</span><span id="st-px-fail">--</span></div>
+  </div>
+  <div class="card">
+    <h3>Система</h3>
+    <div class="kv"><span>Версия</span><span id="st-ver">--</span></div>
+    <div class="kv"><span>Аптайм</span><span id="st-up">--</span></div>
+    <div class="kv"><span>Свободная память</span><span id="st-heap">--</span></div>
+    <div class="kv"><span>Время</span><span id="st-time">--</span></div>
+    <div style="margin-top:10px">
+      <button class="btn danger sm" onclick="confirmRestart()">Перезагрузить плату</button>
+      <span class="restart-msg hint"></span>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════ ВКЛАДКА: НАСТРОЙКИ ════════════════════════ -->
+<div id="page-settings" class="page">
+
+  <div class="card">
+    <h3>WiFi (сеть роутера)</h3>
+    <div class="field">
+      <label>Сеть</label>
+      <select id="wifi-select" onchange="pickWifi()"><option value="">- выбрать из найденных -</option></select>
+    </div>
+    <div class="field">
+      <label>SSID</label>
+      <input type="text" id="wifi-ssid" autocomplete="off">
+    </div>
+    <div class="field">
+      <label>Пароль</label>
+      <input type="password" id="wifi-pass" autocomplete="new-password" placeholder="оставьте пустым, чтобы не менять">
+      <div class="hint">Новая сеть применяется после перезагрузки. Если подключиться не удастся, устройство вернётся к прежней сети.</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>WireGuard</h3>
+    <div class="field">
+      <label>Приватный ключ этого устройства</label>
+      <input type="password" id="wg-priv" autocomplete="new-password">
+      <div class="hint" id="wg-priv-hint">Вывод <code>wg genkey</code>. В браузер обратно не возвращается.</div>
+    </div>
+    <div class="field">
+      <label>Публичный ключ сервера</label>
+      <input type="text" id="wg-pub" autocomplete="off">
+    </div>
+    <div class="field">
+      <label>Preshared key (необязательно)</label>
+      <input type="password" id="wg-psk" autocomplete="new-password">
+      <div class="checkbox-row"><input type="checkbox" id="wg-psk-clear"><label for="wg-psk-clear" style="margin:0">убрать preshared key</label></div>
+    </div>
+    <div class="field">
+      <label>Адрес сервера (IP или имя)</label>
+      <input type="text" id="wg-endpoint" autocomplete="off" placeholder="203.0.113.10">
+    </div>
+    <div class="field">
+      <label>Порт сервера (UDP)</label>
+      <input type="number" id="wg-port" min="1" max="65535">
+    </div>
+    <div class="field">
+      <label>Адрес устройства в туннеле</label>
+      <input type="text" id="wg-addr" autocomplete="off" placeholder="10.8.0.2">
+    </div>
+    <div class="field">
+      <label>Маска туннельной сети</label>
+      <input type="text" id="wg-mask" autocomplete="off">
+    </div>
+    <div class="field">
+      <label>Keepalive, секунд (0 = выключено)</label>
+      <input type="number" id="wg-keepalive" min="0" max="65535">
+      <div class="hint">25 с держит открытым NAT у провайдера. Без keepalive туннель извне недоступен.</div>
+    </div>
+    <div id="wg-pending-note" class="hint warn" style="display:none">
+      Сохранённая конфигурация ещё проверяется. При неудаче устройство вернётся к прежней.
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Проброс портов (из туннеля в локальную сеть)</h3>
+    <div class="hint" style="margin-bottom:8px">
+      Порт на устройстве &rarr; адрес и порт в локальной сети. Например, <b>8080 &rarr; 192.168.1.1 : 80</b>
+      открывает веб-интерфейс роутера по <code>http://&lt;адрес в туннеле&gt;:8080</code>.
+      Порт 80 занят этой страницей.
+    </div>
+    <div id="rules"></div>
+    <button class="btn sm gray" id="rule-add" onclick="addRule()">+ правило</button>
+  </div>
+
+  <div class="card">
+    <h3>Доступ к странице</h3>
+    <div class="checkbox-row"><input type="checkbox" id="auth-en"><label for="auth-en" style="margin:0">Требовать логин и пароль</label></div>
+    <div class="field"><label>Логин (пусто = admin)</label><input type="text" id="auth-user" autocomplete="off"></div>
+    <div class="field">
+      <label>Новый пароль</label>
+      <input type="password" id="auth-pass" autocomplete="new-password" placeholder="оставьте пустым, чтобы не менять">
+      <div class="hint">Забыли пароль &mdash; удерживайте кнопку BOOT 3 секунды: сбросятся все настройки.</div>
+    </div>
+  </div>
+
+  <div style="margin-bottom:16px">
+    <button class="btn" onclick="saveSettings()">Сохранить</button>
+    <span id="save-msg"></span>
+    <div id="restart-box" style="display:none; margin-top:10px">
+      <button class="btn danger" onclick="restartDevice()">Перезагрузить сейчас</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Обновление прошивки</h3>
+    <div class="field"><input type="file" id="ota-file" accept=".bin"></div>
+    <button class="btn sm" id="ota-btn" onclick="startOta()">Прошить</button>
+    <progress id="ota-bar" value="0" max="100" style="display:none"></progress>
+    <div id="ota-msg" class="hint"></div>
+  </div>
+
+  <div class="card">
+    <h3>Перезагрузка</h3>
+    <button class="btn danger sm" onclick="confirmRestart()">Перезагрузить плату</button>
+    <span class="restart-msg hint"></span>
+    <div class="hint">Связь с платой пропадёт на 15&ndash;30 секунд: нужно время на WiFi и туннель.</div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════ ВКЛАДКА: ЛОГИ ═════════════════════════════ -->
+<div id="page-logs" class="page">
+  <div id="log-box"></div>
+</div>
+
+<script>
+/* ── Вспомогательные ────────────────────────────────────────────────────── */
+const $ = id => document.getElementById(id);
+let maxRules = 3;
+let logNext = 0;
+let timers = {};
+
+async function api(path, opts) {
+  const r = await fetch(path, opts);
+  const text = await r.text();
+  if (!r.ok) throw new Error(text || r.statusText);
+  return text ? JSON.parse(text) : {};
+}
+
+function fmtDur(s) {
+  const d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60);
+  return (d ? d + ' д ' : '') + (h ? h + ' ч ' : '') + m + ' мин';
+}
+
+function showTab(name) {
+  document.querySelectorAll('.tab').forEach((t, i) =>
+    t.classList.toggle('active', ['status', 'settings', 'logs'][i] === name));
+  document.querySelectorAll('.page').forEach(p => p.classList.toggle('active', p.id === 'page-' + name));
+  if (name === 'settings') loadSettings();
+  if (name === 'logs') pollLogs();
+}
+
+/* ── Статус ─────────────────────────────────────────────────────────────── */
+const STATE_TEXT = {
+  disabled: ['не настроен', 'off'], wait_wifi: ['ждёт WiFi', 'wait'],
+  wait_time: ['ждёт установки времени', 'wait'], connecting: ['рукопожатие...', 'wait'], up: ['работает', 'up']
+};
+
+async function refreshStatus() {
+  try {
+    const s = await api('/api/status');
+    const [txt, cls] = STATE_TEXT[s.wg.state] || [s.wg.state, 'off'];
+    $('st-badge').textContent = txt;
+    $('st-badge').className = 'badge ' + cls;
+    $('st-hs').textContent = s.wg.handshake_age_s >= 0 ? s.wg.handshake_age_s + ' с назад' : 'не было';
+    $('st-addr').textContent = s.wg.address || '--';
+    $('st-endpoint').textContent = s.wg.endpoint ? s.wg.endpoint + ':' + s.wg.port : '--';
+    $('st-trial').style.display = s.wg.trial ? 'block' : 'none';
+
+    $('st-wifi-mode').textContent = s.wifi.ap_mode ? (s.wifi.connected ? 'STA + точка доступа' : 'точка доступа') : 'STA';
+    $('st-ssid').textContent = s.wifi.ssid || '--';
+    $('st-ip').textContent = s.wifi.ip || '--';
+    $('st-rssi').textContent = s.wifi.connected ? s.wifi.rssi + ' дБм' : '--';
+
+    $('st-px-active').textContent = s.proxy.active;
+    $('st-px-total').textContent = s.proxy.total;
+    $('st-px-rej').textContent = s.proxy.rejected;
+    $('st-px-fail').textContent = s.proxy.failed_target;
+
+    $('st-ver').textContent = s.version;
+    $('st-up').textContent = fmtDur(s.uptime_s);
+    $('st-heap').textContent = Math.round(s.heap_free / 1024) + ' КБ';
+    $('st-time').textContent = s.clock_ok ? new Date(s.epoch * 1000).toLocaleString() : 'не установлено';
+  } catch (e) { /* устройство перезагружается или сеть моргнула */ }
+}
+
+/* ── Настройки ──────────────────────────────────────────────────────────── */
+function ruleRow(r) {
+  const row = document.createElement('div');
+  row.className = 'row3';
+  row.innerHTML = '<input class="p lp" type="number" placeholder="порт" min="1" max="65535">' +
+                  '<span>&rarr;</span>' +
+                  '<input class="ip tip" type="text" placeholder="192.168.1.1">' +
+                  '<span>:</span>' +
+                  '<input class="p tp" type="number" placeholder="порт" min="1" max="65535">' +
+                  '<button class="btn sm danger" type="button">&times;</button>';
+  row.querySelector('.lp').value = r.listen_port || '';
+  row.querySelector('.tip').value = r.target_ip || '';
+  row.querySelector('.tp').value = r.target_port || '';
+  row.querySelector('button').onclick = () => { row.remove(); updateAddBtn(); };
+  return row;
+}
+function updateAddBtn() { $('rule-add').disabled = $('rules').children.length >= maxRules; }
+function addRule(r) { $('rules').appendChild(ruleRow(r || {})); updateAddBtn(); }
+
+function pickWifi() {
+  const v = $('wifi-select').value;
+  if (v) $('wifi-ssid').value = v;
+}
+
+async function loadSettings() {
+  try {
+    const [s, aps] = await Promise.all([api('/api/settings'), api('/api/wifi/scan')]);
+    maxRules = s.max_rules;
+
+    $('wifi-ssid').value = s.wifi_ssid;
+    const sel = $('wifi-select');
+    sel.length = 1;
+    aps.forEach(a => sel.add(new Option(a.ssid + '  (' + a.rssi + ' дБм' + (a.secured ? '' : ', открытая') + ')', a.ssid)));
+
+    $('wg-pub').value = s.wg.peer_public_key;
+    $('wg-endpoint').value = s.wg.endpoint;
+    $('wg-port').value = s.wg.port;
+    $('wg-addr').value = s.wg.address;
+    $('wg-mask').value = s.wg.netmask;
+    $('wg-keepalive').value = s.wg.keepalive;
+    $('wg-priv').value = ''; $('wg-psk').value = ''; $('wg-psk-clear').checked = false;
+    $('wg-priv').placeholder = s.wg.private_key_set ? 'задан - оставьте пустым, чтобы не менять' : '';
+    $('wg-psk').placeholder = s.wg.preshared_key_set ? 'задан - оставьте пустым, чтобы не менять' : '';
+    $('wg-pending-note').style.display = s.wg_pending ? 'block' : 'none';
+
+    $('rules').innerHTML = '';
+    s.rules.forEach(addRule);
+    updateAddBtn();
+
+    $('auth-en').checked = s.auth_enabled;
+    $('auth-user').value = s.auth_user;
+    $('auth-pass').value = '';
+  } catch (e) { showMsg('Не удалось загрузить настройки: ' + e.message, 'err'); }
+}
+
+function showMsg(text, cls) { const m = $('save-msg'); m.textContent = text; m.className = cls; }
+
+async function saveSettings() {
+  const rules = [...$('rules').children].map(r => ({
+    listen_port: +r.querySelector('.lp').value,
+    target_ip: r.querySelector('.tip').value.trim(),
+    target_port: +r.querySelector('.tp').value
+  }));
+  const body = {
+    wifi_ssid: $('wifi-ssid').value.trim(),
+    wifi_pass: $('wifi-pass').value,
+    wg: {
+      private_key: $('wg-priv').value.trim(),
+      peer_public_key: $('wg-pub').value.trim(),
+      preshared_key: $('wg-psk').value.trim(),
+      preshared_clear: $('wg-psk-clear').checked,
+      endpoint: $('wg-endpoint').value.trim(),
+      port: +$('wg-port').value,
+      address: $('wg-addr').value.trim(),
+      netmask: $('wg-mask').value.trim(),
+      keepalive: +$('wg-keepalive').value
+    },
+    rules: rules,
+    auth_enabled: $('auth-en').checked,
+    auth_user: $('auth-user').value,
+    auth_pass: $('auth-pass').value
+  };
+  try {
+    const r = await api('/api/settings', { method: 'POST', body: JSON.stringify(body) });
+    showMsg(r.restart_required ? 'Сохранено. Нужна перезагрузка.' : 'Сохранено.', r.restart_required ? 'warn' : 'ok');
+    $('restart-box').style.display = r.restart_required ? 'block' : 'none';
+    $('wifi-pass').value = ''; $('wg-priv').value = ''; $('wg-psk').value = ''; $('auth-pass').value = '';
+    if (r.wg_pending) $('wg-pending-note').style.display = 'block';
+  } catch (e) { showMsg(e.message, 'err'); }
+}
+
+/* Постоянные кнопки на «Статусе» и в «Настройках» сначала спрашивают подтверждение */
+function confirmRestart() {
+  if (!confirm('Перезагрузить плату? Связь пропадёт примерно на 15\u201330 секунд.')) return;
+  restartDevice();
+}
+
+function setRestartMsg(text) {
+  document.querySelectorAll('.restart-msg').forEach(e => { e.textContent = text; });
+}
+
+/* Плата поднимает WiFi и туннель дольше 8 секунд, поэтому не обновляем страницу вслепую:
+ * ждём, пока она снова ответит (через туннель это может занять 20-40 с), и только тогда обновляем. */
+async function restartDevice() {
+  try { await api('/api/restart', { method: 'POST' }); } catch (e) {}
+  showMsg('Перезагрузка...', 'warn');
+  setRestartMsg('Перезагрузка... жду, пока плата снова ответит.');
+  const delay = ms => new Promise(r => setTimeout(r, ms));
+  const t0 = Date.now();
+  await delay(5000);                       /* дать ей уйти в перезагрузку */
+  while (Date.now() - t0 < 180000) {
+    try { await fetch('/api/status', { cache: 'no-store' }); location.reload(); return; }
+    catch (e) { await delay(2000); }       /* сеть пока недоступна: ждём дальше */
+  }
+  setRestartMsg('Плата не отвечает больше 3 минут. Проверьте питание и WiFi.');
+}
+
+/* ── OTA ────────────────────────────────────────────────────────────────── */
+function startOta() {
+  const f = $('ota-file').files[0];
+  if (!f) { $('ota-msg').textContent = 'Выберите файл .bin'; return; }
+  const xhr = new XMLHttpRequest();
+  xhr.open('POST', '/api/ota');
+  xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+  $('ota-bar').style.display = 'block';
+  $('ota-btn').disabled = true;
+  xhr.upload.onprogress = e => { if (e.lengthComputable) $('ota-bar').value = e.loaded / e.total * 100; };
+  xhr.onload = () => {
+    if (xhr.status === 200) {
+      $('ota-msg').textContent = 'Готово. Устройство перезагружается...';
+      setTimeout(() => location.reload(), 10000);
+    } else {
+      $('ota-msg').textContent = 'Ошибка: ' + xhr.responseText;
+      $('ota-btn').disabled = false;
+    }
+  };
+  xhr.onerror = () => { $('ota-msg').textContent = 'Обрыв соединения'; $('ota-btn').disabled = false; };
+  xhr.send(f);
+}
+
+/* ── Логи ───────────────────────────────────────────────────────────────── */
+async function pollLogs() {
+  if (!$('page-logs').classList.contains('active')) return;
+  try {
+    const d = await api('/api/logs?from=' + logNext);
+    const box = $('log-box');
+    const stick = box.scrollTop + box.clientHeight >= box.scrollHeight - 20;
+    d.logs.forEach(l => box.appendChild(document.createTextNode(l.msg + '\n')));
+    logNext = d.next;
+    while (box.childNodes.length > 300) box.removeChild(box.firstChild);
+    if (stick) box.scrollTop = box.scrollHeight;
+  } catch (e) {}
+  clearTimeout(timers.logs);
+  timers.logs = setTimeout(pollLogs, 2000);
+}
+
+/* ── Старт ──────────────────────────────────────────────────────────────── */
+/* Сообщаем устройству время браузера: нужно, пока оно не получило время по SNTP.
+ * Принимается, только если часы платы ещё не установлены. */
+api('/api/time', { method: 'POST', body: JSON.stringify({ epoch: Math.floor(Date.now() / 1000) }) }).catch(() => {});
+refreshStatus();
+setInterval(refreshStatus, 2000);
+</script>
+</body>
+</html>

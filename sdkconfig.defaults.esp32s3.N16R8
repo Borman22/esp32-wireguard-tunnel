@@ -1,0 +1,12 @@
+# Переопределения для ESP32-S3 N16R8 (16 МБ flash, 8 МБ octal PSRAM).
+# Применяется поверх sdkconfig.defaults при idf.py set-target esp32s3.
+# Таблица разделов остаётся 4-мегабайтной: прошивке этого хватает, остаток flash не используется.
+
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=n
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+CONFIG_ESPTOOLPY_FLASHSIZE="16MB"
+
+# PSRAM восьмиканальная (N16R8)
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_SPEED_80M=y

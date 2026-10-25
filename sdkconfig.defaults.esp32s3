@@ -1,0 +1,9 @@
+# Переопределения для ESP32-S3FH4R2 (4 МБ flash, 2 МБ quad PSRAM внутри корпуса).
+# Применяется поверх sdkconfig.defaults при idf.py set-target esp32s3.
+# Flash 4 МБ уже задан в sdkconfig.defaults, таблица разделов (partitions.csv) подходит без изменений.
+# Вариант под N16R8 (16 МБ flash, octal PSRAM) сохранён в sdkconfig.defaults.esp32s3.N16R8
+# (IDF его не читает, чтобы применить — переименовать обратно в sdkconfig.defaults.esp32s3).
+
+# PSRAM проекту не нужна: выключена, чтобы не усложнять сборку и не влиять на сравнение скорости с C3.
+# Если понадобится: CONFIG_SPIRAM=y и CONFIG_SPIRAM_MODE_QUAD=y
+CONFIG_SPIRAM=n
